@@ -10,15 +10,10 @@
 // Eduroam network credentials
 const char* ssid = "eduroam";
 const char* password = "REPLACE_WITH_YOUR_PASSWORD";
-#define EAP_IDENTITY "fahsan.bscs20seecs" //nickname@example.com, at some organizations should work nickname only without realm, but it is not recommended
-#define EAP_PASSWORD "Chocobulb1!" //password for eduroam account
+#define EAP_IDENTITY "YOUR_USERNAME" //username for eduroam account
+#define EAP_PASSWORD "YOUR_PASSWORD" //password for eduroam account
 
 AsyncWebServer server(80);
-//String header;// Variable to store the HTTP request
-//unsigned long currentTime = millis();// Current time
-//unsigned long previousTime = 0; // Previous time
-//const long timeoutTime = 2000;// Define timeout time in milliseconds (example: 2000ms = 2s)
-
 
 // Create an Event Source on /events
 AsyncEventSource events("/events");
