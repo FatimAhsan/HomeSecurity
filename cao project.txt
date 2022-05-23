@@ -1,6 +1,8 @@
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include "time.h"
+#include "SPIFFS.h"
 #include "esp_wpa2.h" //wpa2 library for connections to Enterprise networks
 
 //
@@ -10,10 +12,13 @@
 // Eduroam network credentials
 const char* ssid = "eduroam";
 const char* password = "REPLACE_WITH_YOUR_PASSWORD";
-#define EAP_IDENTITY "YOUR_USERNAME" //username for eduroam account
-#define EAP_PASSWORD "YOUR_PASSWORD" //password for eduroam account
+#define EAP_IDENTITY "fahsan.bscs20seecs" //nickname@example.com, at some organizations should work nickname only without realm, but it is not recommended
+#define EAP_PASSWORD "Chocobulb1!" //password for eduroam account
 
 AsyncWebServer server(80);
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 10;//GMT+5 for Pakistan
+const int   daylightOffset_sec = 0;
 
 // Create an Event Source on /events
 AsyncEventSource events("/events");
@@ -27,7 +32,7 @@ unsigned long timerDelay = 1000;
 
 #define DOOR_SENSOR_PIN  32  // ESP32 pin GIOP19 connected to door sensor's pin
 #define MOTION_SENSOR_PIN  27  // ESP27 pin GIOP19 connected to motion sensor's pin
-
+String History = "";
 int doorState;
 int doorStateCurrent  = LOW; // current  state of door sensor's pin
 int doorStatePrevious = LOW; // previous state of door sensor's pin
@@ -43,7 +48,6 @@ void getSensorReadings(){
   motionStateCurrent  = digitalRead(MOTION_SENSOR_PIN); // read new state    
   // vibration sensor having sensitiivty regulated by 47 k resister and 22k resistor in series
   // Serial.println(analogRead(25));
-  // wait a bit for the analog-to-digital converter to stabilize after the last reading:
   delay(2);
 
 }
@@ -64,109 +68,57 @@ void initWiFi() {
    Serial.println("");
    Serial.println("WiFi connected.");
    Serial.println("IP address: ");
-   Serial.println(WiFi.localIP());
+   Serial.print("http://");
+   Serial.print(WiFi.localIP());
+   Serial.print("/html");
    server.begin();
 }
+
+void saveTriggerTime(String action){
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  char timeHour[3];
+  strftime(timeHour,3, "%H", &timeinfo);
+  char timeMin[3];
+  strftime(timeHour,3, "%M", &timeinfo);
+  char timeWeekDay[10];
+  strftime(timeWeekDay,10, "%A", &timeinfo);
+  History += " " + action +  " on " + timeWeekDay + " at " +timeHour + ":" + timeMin + "\n";
+  Serial.println(History);
+}
+
 
 void sendEvents(){
    events.send("ping",NULL,millis());
     if(doorStateCurrent == LOW && doorStatePrevious == HIGH)
-    {events.send("Door closed","doorStateCurrent",millis());}
-    else if (doorStateCurrent == HIGH && doorStatePrevious == LOW){events.send("Door opened","doorStateCurrent",millis());}
+    {events.send("Door closed","doorStateCurrent",millis());saveTriggerTime("Door closed ");}
+    else if (doorStateCurrent == HIGH && doorStatePrevious == LOW){events.send("Door opened","doorStateCurrent",millis());saveTriggerTime("Door open ");}
     else if(doorStateCurrent == LOW){events.send("Door is closed","doorStateCurrent",millis());}
     else if(doorStateCurrent == HIGH){events.send("Door is open","doorStateCurrent",millis());}
 
     if(motionStateCurrent == LOW && motionStatePrevious == HIGH)
-    {events.send("Motion stopped.","motionStateCurrent",millis());Serial.println();}
-    else if(motionStateCurrent ==   HIGH && motionStatePrevious == LOW){events.send("Motion detected!","motionStateCurrent",millis());Serial.println();}
+    {events.send("Motion stopped.","motionStateCurrent",millis());Serial.println();saveTriggerTime("Motion stopped ");}
+    else if(motionStateCurrent ==   HIGH && motionStatePrevious == LOW){
+      events.send("Motion detected!","motionStateCurrent",millis());Serial.println();saveTriggerTime("Motion detected ");}
     else if(motionStateCurrent == LOW){events.send("No motion detected","motionStateCurrent",millis());}
 }
-
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html>
-<head>
-  <title>ESP Web Server</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
-  <link rel="icon" href="data:,">
-  <style>
-    html {font-family: Arial; display: inline-block; text-align: center;}
-    p { font-size: 1.2rem;}
-    body {  margin: 0;}
-    .topnav { overflow: hidden; background-color: #50B8B4; color: white; font-size: 1rem; }
-    .content { padding: 20px; }
-    .card { background-color: white; box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5); }
-    .cards { max-width: 800px; margin: 0 auto; display: grid; grid-gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-    .reading { font-size: 1.4rem; }
-    .logg {padding:5%;}
-  </style>
-</head>
-<body>
-  <div class="topnav">
-    <h1>HOME STATUS</h1>
-  </div>
-  <div class="content">
-    <div class="cards">
-      <div class="card">
-        <p><i class="fas fa-door-open" style="color:#059e8a;"></i> DOOR SENSOR</p><p><span class="reading"><span id="door"></span></p>
-      </div>
-      <div class="card">
-        <p><i class="fas fa-wifi" style="color:#00add6;"></i> MOTION SENSOR</p><p><span class="reading"><span id="motion"></span></p>
-      </div>
-    </div>
-    <div class="logg"><span id="log"> <h3>Sensor Triggered History </h5></span></div>
-  </div>
-<script>
-if (!!window.EventSource) {
- var source = new EventSource('/events');
- 
- source.addEventListener('open', function(e) {
-  console.log("Events Connected");
- }, false);
- source.addEventListener('error', function(e) {
-  if (e.target.readyState != EventSource.OPEN) {
-    console.log("Events Disconnected");
-  }
- }, false);
- 
- source.addEventListener('message', function(e) {
-  console.log("message", e.data);
- }, false);
- 
-  source.addEventListener('doorStateCurrent', function(e) {
-  console.log("doorStateCurrent", e.data);
-  document.getElementById("door").innerHTML = e.data;
-  var date = new Date();
-  var strdate = date.toDateString();
-  var time = date.toLocaleTimeString();
-  if((e.data != "Door is closed") && (e.data != "Door is open"))
-  {document.getElementById("log").innerHTML += (e.data + " on " + strdate + " at " + time + "<br>");}
- }, false);
- 
- source.addEventListener('motionStateCurrent', function(e) {
-  console.log("motionStateCurrent", e.data);
-  document.getElementById("motion").innerHTML = e.data;
-  var date = new Date();
-  var strdate = date.toDateString();
-  var time = date.toLocaleTimeString();
-  if(e.data != "No motion detected")
-  {document.getElementById("log").innerHTML += (e.data + " on " + strdate + " at " + time + "<br>");}
- }, false);
-}
-</script>
-</body>
-</html>)rawliteral";
-
 void setup() {
   //SENSOR SETUP
   Serial.begin(9600);                    // initialize serial
   pinMode(DOOR_SENSOR_PIN, INPUT_PULLUP); // set ESP32 pin to input pull-up mode
   pinMode(MOTION_SENSOR_PIN, INPUT_PULLUP); // set ESP32 pin to input pull-up mode
-
+  if(!SPIFFS.begin()){
+          Serial.println("An Error has occurred while mounting SPIFFS");
+          return;
+    }
+   
   initWiFi();
   // Handle Web Server
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index_html);
+  server.on("/html", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/code.html", "text/html");
   });
 
   // Handle Web Server Events
@@ -179,6 +131,9 @@ void setup() {
   });
   server.addHandler(&events);
   server.begin();
+
+   //TIME SETUP FOR HISTORY 
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 }
 
 void loop() {
