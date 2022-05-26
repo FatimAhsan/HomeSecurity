@@ -10,8 +10,8 @@
 // Eduroam network credentials
 const char* ssid = "eduroam";
 const char* password = "REPLACE_WITH_YOUR_PASSWORD";
-#define EAP_IDENTITY "fahsan.bscs20seecs" //nickname@example.com, at some organizations should work nickname only without realm, but it is not recommended
-#define EAP_PASSWORD "Chocobulb1!" //password for eduroam account
+#define EAP_IDENTITY "YOUR USERNAME" //nickname@example.com, at some organizations should work nickname only without realm, but it is not recommended
+#define EAP_PASSWORD "YOUR PASSWORD" //password for eduroam account
 
 
 const char* PARAM_INPUT_1 = "output";
@@ -52,18 +52,17 @@ void getSensorReadings(){
 }
 
 void sendEvents(){
-   events.send("ping",NULL,millis());
-    if(doorStateCurrent == LOW && doorStatePrevious == HIGH && SystemState)
+    if((doorStateCurrent == LOW) && (doorStatePrevious == HIGH) && SystemState)
     {events.send("Door closed","doorStateCurrent",millis());}
-    else if (doorStateCurrent == HIGH && doorStatePrevious == LOW && SystemState){events.send("Door opened","doorStateCurrent",millis());}
-    else if(doorStateCurrent == LOW){events.send("Door is closed","doorStateCurrent",millis());}
-    else if(doorStateCurrent == HIGH){events.send("Door is open","doorStateCurrent",millis());}
+    else if ((doorStateCurrent == HIGH) && (doorStatePrevious == LOW) && SystemState){events.send("Door opened","doorStateCurrent",millis());}
+    else if((doorStateCurrent == LOW) ){events.send("Door is closed","doorStateCurrentNoSys",millis());}
+    else if(doorStateCurrent == HIGH){events.send("Door is open","doorStateCurrentNoSys",millis());}
 
-    if(motionStateCurrent == LOW && motionStatePrevious == HIGH && SystemState)
-    {events.send("Motion stopped.","motionStateCurrent",millis());Serial.println();}
-    else if(motionStateCurrent ==   HIGH && motionStatePrevious == LOW && SystemState){events.send("Motion detected","motionStateCurrent",millis());Serial.println();}
-    else if(motionStateCurrent == LOW){events.send("No motion detected","motionStateCurrent",millis());}
-    else if(motionStateCurrent == HIGH){events.send("Motion detected!","motionStateCurrent",millis());}
+    if((motionStateCurrent == LOW) && (motionStatePrevious == HIGH)&& SystemState)
+    {events.send("Motion stopped.","motionStateCurrent",millis());}
+    else if((motionStateCurrent ==   HIGH) && (motionStatePrevious == LOW)&& SystemState){events.send("Motion detected","motionStateCurrent",millis());}
+    else if((motionStateCurrent == LOW) && (motionStatePrevious == LOW)){events.send("No motion detected","motionStateCurrentNoSys",millis());}
+    else if((motionStateCurrent == HIGH)&& (motionStatePrevious == HIGH)){events.send("Motion detected!","motionStateCurrentNoSys",millis());};
 }
 
 
@@ -107,7 +106,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       </div>
       </div>
     </div>
-    <div class="logg"><span id="log"> <h3>Sensor Triggered History </h5></span></div>
+    <div class="logg"><span id="log"> <h3>Sensor Triggered History </h3></span></div>
   </div>
 
 <script>function toggleCheckbox(element) {
@@ -115,10 +114,9 @@ const char index_html[] PROGMEM = R"rawliteral(
   if(element.checked){ xhr.open("GET", "/update?output="+element.id+"&state=1", true); }
   else { xhr.open("GET", "/update?output="+element.id+"&state=0", true); }
   xhr.send();
-
+ }
 if (!!window.EventSource) {
  var source = new EventSource('/events');
- 
  source.addEventListener('open', function(e) {
   console.log("Events Connected");
  }, false);
@@ -131,27 +129,27 @@ if (!!window.EventSource) {
  source.addEventListener('message', function(e) {
   console.log("message", e.data);
  }, false);
- 
+
+  source.addEventListener('doorStateCurrentNoSys', function(e) {
+  document.getElementById("door").innerHTML = e.data;
+  }, false);
+  source.addEventListener('motionStateCurrentNoSys', function(e) {
+  document.getElementById("motion").innerHTML = e.data;
+  }, false);
+  
   source.addEventListener('doorStateCurrent', function(e) {
-  console.log("doorStateCurrent", e.data);
   document.getElementById("door").innerHTML = e.data;
   var date = new Date();
   var strdate = date.toDateString();
-  var time = date.toLocaleTimeString();
-  if((e.data != "Door is closed") && (e.data != "Door is open"))
-  {document.getElementById("log").innerHTML += (e.data + " on " + strdate + " at " + time + "<br>");}
+  var time = date.toLocaleTimeString();document.getElementById("log").innerHTML += (e.data + " on " + strdate + " at " + time + "<br>");  console.log("doorStateCurrent", e.data);
  }, false);
  
  source.addEventListener('motionStateCurrent', function(e) {
-  console.log("motionStateCurrent", e.data);
   document.getElementById("motion").innerHTML = e.data;
   var date = new Date();
   var strdate = date.toDateString();
-  var time = date.toLocaleTimeString();
-  if((e.data != "No motion detected") && (e.data != "Motion detected!"))
-  {document.getElementById("log").innerHTML += (e.data + " on " + strdate + " at " + time + "<br>");}
+  var time = date.toLocaleTimeString();document.getElementById("log").innerHTML += (e.data + " on " + strdate + " at " + time + "<br>");  console.log("motionStateCurrent", e.data);
  }, false);
-}
 }
 </script>
 </body>
@@ -183,8 +181,6 @@ void setup(){
    Serial.println("IP address: ");
    Serial.println(WiFi.localIP());
    server.begin();
-  // Print ESP Local IP Address
-  Serial.println(WiFi.localIP());
 
   // Route for root / web page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
